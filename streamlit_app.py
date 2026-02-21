@@ -37,125 +37,143 @@ for uploaded in uploaded_files:
         ts = datetime(int(yyyy), int(mm), int(dd), int(HH), int(MM), int(SS))
 
     df = pd.read_csv(uploaded)
-    df['timestamp'] = ts + pd.to_timedelta(np.arange(len(df)) * 5, unit='min')
-    if 'contract' not in df.columns:
-        df['contract'] = fn
+    df['timestamp'] = ts + pd.to_timedelta(np.arange(len(df)) * 5, unit="min")
+    if "contract" not in df.columns:
+        df["contract"] = fn
     dfs.append(df)
 
-df = pd.concat(dfs).sort_values(['contract', 'timestamp']).reset_index(drop=True)
+df = pd.concat(dfs).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
 # ------------------------------------------------------------
 # Safe Time Range Selection
 # ------------------------------------------------------------
-if 'timestamp' not in df.columns or df['timestamp'].isna().all():
+if "timestamp" not in df.columns or df["timestamp"].isna().all():
     st.error("No valid 'timestamp' data found in uploaded files.")
     st.stop()
 
-df['timestamp'] = pd.to_datetime(df['timestamp'])
+df["timestamp"] = pd.to_datetime(df["timestamp"])
 
-if df['timestamp'].nunique() < 2:
-    t0 = df['timestamp'].min()
-    t1 = df['timestamp'].max()
+if df["timestamp"].nunique() < 2:
+    t0 = df["timestamp"].min()
+    t1 = df["timestamp"].max()
     st.info("Only one timestamp period detected — skipping range selection.")
 else:
-    tmin, tmax = df['timestamp'].min().to_pydatetime(), df['timestamp'].max().to_pydatetime()
+    tmin, tmax = df["timestamp"].min().to_pydatetime(), df["timestamp"].max().to_pydatetime()
     t0, t1 = st.sidebar.slider(
         "Select time window",
         min_value=tmin,
         max_value=tmax,
         value=(tmin, tmax),
-        format="YYYY‑MM‑DD HH:mm"
+        format="YYYY‑MM‑DD HH:mm",
     )
 
-df = df[(df['timestamp'] >= t0) & (df['timestamp'] <= t1)]
+df = df[(df["timestamp"] >= t0) & (df["timestamp"] <= t1)]
 
 st.title("📊 Intraday Futures Momentum & Correlation Dashboard")
-st.caption(f"Data range: {t0} → {t1} | Contracts: {df['contract'].nunique()} | Total rows: {len(df):,}")
+st.caption(
+    f"Data range: {t0} → {t1} | Contracts: {df['contract'].nunique()} | Total rows: {len(df):,}"
+)
 
 # ------------------------------------------------------------
 # Core Metrics
 # ------------------------------------------------------------
-df['log_ret'] = np.log(df['closePrice'] / df['closePrice'].shift(1))
-df['roc5'] = df['closePrice'].pct_change(5)
-df['ma5'] = df['closePrice'].rolling(5).mean()
-df['ma20'] = df['closePrice'].rolling(20).mean()
-df['macd'] = df['closePrice'].ewm(span=12).mean() - df['closePrice'].ewm(span=26).mean()
+df["log_ret"] = np.log(df["closePrice"] / df["closePrice"].shift(1))
+df["roc5"] = df["closePrice"].pct_change(5)
+df["ma5"] = df["closePrice"].rolling(5).mean()
+df["ma20"] = df["closePrice"].rolling(20).mean()
+df["macd"] = df["closePrice"].ewm(span=12).mean() - df["closePrice"].ewm(span=26).mean()
 
 # --- Volatility & Intensity ---
-df['real_vol'] = df['log_ret'].rolling(10).std()
-df['range_pct'] = (df['highPrice'] - df['lowPrice']) / df['closePrice']
-df['tr'] = np.maximum.reduce([
-    df['highPrice'] - df['lowPrice'],
-    (df['highPrice'] - df['closePrice'].shift()).abs(),
-    (df['lowPrice'] - df['closePrice'].shift()).abs()
-])
-df['atr'] = df['tr'].rolling(14).mean()
+df["real_vol"] = df["log_ret"].rolling(10).std()
+df["range_pct"] = (df["highPrice"] - df["lowPrice"]) / df["closePrice"]
+df["tr"] = np.maximum.reduce(
+    [
+        df["highPrice"] - df["lowPrice"],
+        (df["highPrice"] - df["closePrice"].shift()).abs(),
+        (df["lowPrice"] - df["closePrice"].shift()).abs(),
+    ]
+)
+df["atr"] = df["tr"].rolling(14).mean()
 
 # --- Derivative clues ---
-df['dOI'] = df['openInterest'].diff()
-df['dP'] = df['closePrice'].diff()
-df['oi_price'] = df['dOI'] * df['dP']
-df['spec_ratio'] = df['premiumTurnOver'] / df['totalTurnover']
-df['vwap_like'] = df['value'] / df['volume']
+df["dOI"] = df["openInterest"].diff()
+df["dP"] = df["closePrice"].diff()
+df["oi_price"] = df["dOI"] * df["dP"]
+df["spec_ratio"] = df["premiumTurnOver"] / df["totalTurnover"]
+df["vwap_like"] = df["value"] / df["volume"]
 
 # --- Cross relationships ---
-df['vol_vol'] = df['volume'].rolling(5).corr(df['real_vol'])
+df["vol_vol"] = df["volume"].rolling(5).corr(df["real_vol"])
 
 # --- Optional modeling ---
-df['ret_lag1'] = df['log_ret'].shift(1)
+df["ret_lag1"] = df["log_ret"].shift(1)
 rolling_window = 50
 betas = []
 for i in range(len(df)):
     if i < rolling_window:
         betas.append(np.nan)
     else:
-        y = df['log_ret'].iloc[i - rolling_window:i]
-        x = add_constant(df['ret_lag1'].iloc[i - rolling_window:i])
-        model = OLS(y, x, missing='drop').fit()
+        y = df["log_ret"].iloc[i - rolling_window : i]
+        x = add_constant(df["ret_lag1"].iloc[i - rolling_window : i])
+        model = OLS(y, x, missing="drop").fit()
         betas.append(model.params[-1])
-df['mom_strength'] = betas
-df['autocorr'] = df['log_ret'].rolling(50).apply(lambda x: x.autocorr(), raw=False)
+df["mom_strength"] = betas
+df["autocorr"] = df["log_ret"].rolling(50).apply(lambda x: x.autocorr(), raw=False)
 
 # ------------------------------------------------------------
 # Inter‑contract Correlations
 # ------------------------------------------------------------
-pivot = df.pivot(index='timestamp', columns='contract', values='log_ret').dropna()
+pivot = df.pivot(index="timestamp", columns="contract", values="log_ret").dropna()
 corr_matrix = pivot.corr()
 vol_pivot = np.log(pivot.abs() + 1e-9)
 vol_correlation = vol_pivot.corr()
 
-# PCA
-if len(pivot.columns) >= 2:
-    pca = PCA(n_components=2)
-    pc = pca.fit_transform(pivot.fillna(0))
-    pcdf = pd.DataFrame(pc, index=pivot.index, columns=['PC1', 'PC2'])
+# ------------------------------------------------------------
+# PCA (robust)
+# ------------------------------------------------------------
+pcdf = pd.DataFrame(index=pivot.index)
+if pivot.shape[0] > 1 and pivot.shape[1] > 1:
+    try:
+        pca = PCA(n_components=2)
+        pc = pca.fit_transform(pivot.fillna(0))
+        pcdf = pd.DataFrame(pc, index=pivot.index, columns=["PC1", "PC2"])
+    except Exception as e:
+        st.warning(f"PCA skipped: {e}")
 else:
-    pcdf = pd.DataFrame(index=pivot.index, columns=['PC1', 'PC2'])
+    st.info("PCA skipped – need at least 2 contracts and 2 timestamps.")
 
-# Spread analysis (near vs far expiry)
-contracts = sorted(df['contract'].unique())
+# ------------------------------------------------------------
+# Spread Analysis
+# ------------------------------------------------------------
+contracts = sorted(df["contract"].unique())
 spread_df = pd.DataFrame()
 if len(contracts) >= 2:
     near, far = contracts[:2]
-    sp = df[df['contract'].isin([near, far])].pivot(index='timestamp', columns='contract', values='closePrice').dropna()
-    sp['spread'] = sp[far] - sp[near]
+    sp = (
+        df[df["contract"].isin([near, far])]
+        .pivot(index="timestamp", columns="contract", values="closePrice")
+        .dropna()
+    )
+    sp["spread"] = sp[far] - sp[near]
     spread_df = sp
 
 # ------------------------------------------------------------
 # Visualization
 # ------------------------------------------------------------
 st.header("Momentum & Direction")
-fig_price = px.line(df, x='timestamp', y=['closePrice', 'ma5', 'ma20'], title='Prices & Moving Averages')
+fig_price = px.line(
+    df, x="timestamp", y=["closePrice", "ma5", "ma20"], title="Prices & Moving Averages"
+)
 st.plotly_chart(fig_price, use_container_width=True)
 
-st.line_chart(df.set_index('timestamp')[['macd', 'roc5']])
+st.line_chart(df.set_index("timestamp")[["macd", "roc5"]])
 
 st.header("Volatility & Intensity")
-st.line_chart(df.set_index('timestamp')[['real_vol', 'atr', 'range_pct']])
-st.dataframe(df[['timestamp','contract','real_vol','atr','range_pct']].dropna().tail(10))
+st.line_chart(df.set_index("timestamp")[["real_vol", "atr", "range_pct"]])
+st.dataframe(df[["timestamp", "contract", "real_vol", "atr", "range_pct"]].dropna().tail(10))
 
 st.header("Derivative Clues")
-st.line_chart(df.set_index('timestamp')[['oi_price','spec_ratio','vwap_like']])
+st.line_chart(df.set_index("timestamp")[["oi_price", "spec_ratio", "vwap_like"]])
 st.caption("ΔOI·ΔPrice ⇒ >0 long buildup | <0 unwinding")
 
 st.header("Cross Relationships & Correlations")
@@ -167,15 +185,17 @@ if not pcdf.empty:
     st.plotly_chart(px.line(pcdf, title="PCA of Returns"), use_container_width=True)
 
 st.subheader("Volume–Volatility rolling correlation (participation intensity)")
-if 'vol_vol' in df.columns:
-    st.line_chart(df.set_index('timestamp')['vol_vol'])
+if "vol_vol" in df.columns:
+    st.line_chart(df.set_index("timestamp")["vol_vol"])
 
 if not spread_df.empty:
     st.subheader(f"Spread {contracts[1]} − {contracts[0]}")
-    st.line_chart(spread_df['spread'])
+    st.line_chart(spread_df["spread"])
 
 st.header("Momentum Persistence & Regression")
-st.line_chart(df.set_index('timestamp')[['mom_strength','autocorr']])
-st.caption("mom_strength = rolling regression slope (ret_t vs ret_(t‑1)), autocorr = persistence")
+st.line_chart(df.set_index("timestamp")[["mom_strength", "autocorr"]])
+st.caption(
+    "mom_strength = rolling regression slope (ret_t vs ret_(t‑1)) | autocorr = persistence"
+)
 
 st.success("✅ All computations complete.")
