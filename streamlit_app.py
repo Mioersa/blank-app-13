@@ -169,7 +169,7 @@ selected = contracts[0] if len(contracts) else None
 if selected:
     sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
     if not sub.empty:
-        fig, ax = plt.subplots(figsize=(18, 9))
+        fig, ax = plt.subplots(figsize=(8, 3))
         ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
         ax.set_title(f"{selected} — Last Price vs Captured Times")
         ax.set_ylabel("Last Price")
@@ -188,34 +188,39 @@ else:
     st.info("No contract found for price‑vs‑time chart.")
 
 # ------------------------------------------------------------
-# Chart: Volume Change Between Files
+# Table & Chart: Volume Change Between Files
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
-# compute file-to-file volume delta
-volume_deltas = []
+# build summary table
+records = []
 for i, df_part in enumerate(dfs):
-    vol_first = df_part["volume"].iloc[0] if "volume" in df_part else np.nan
+    curr_first = df_part["volume"].iloc[0] if "volume" in df_part else np.nan
     if i == 0:
-        delta = 0
+        prev_last, delta = np.nan, 0
     else:
-        prev_vol_last = dfs[i - 1]["volume"].iloc[-1]
-        delta = vol_first - prev_vol_last
-    volume_deltas.append(delta)
+        prev_last = dfs[i - 1]["volume"].iloc[-1]
+        delta = curr_first - prev_last
+    records.append({
+        "capture_time": upload_times[i],
+        "label": upload_labels[i],
+        "previous_volume_last": prev_last,
+        "current_volume_first": curr_first,
+        "delta_volume": delta
+    })
 
-vol_change_df = pd.DataFrame({
-    "capture_time": upload_times,
-    "label": upload_labels,
-    "volume_change": volume_deltas
-})
+vol_change_table = pd.DataFrame(records)
+st.dataframe(vol_change_table[["capture_time", "label", "previous_volume_last",
+                               "current_volume_first", "delta_volume"]])
 
-fig, ax = plt.subplots(figsize=(18, 9))
-ax.bar(vol_change_df["capture_time"], vol_change_df["volume_change"],
+# plot change
+fig, ax = plt.subplots(figsize=(8, 3))
+ax.bar(vol_change_table["capture_time"], vol_change_table["delta_volume"],
        width=0.001, color="tab:blue", alpha=0.7)
 for t, lbl in zip(upload_times, upload_labels):
     ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="red")
-ax.set_title("Volume Change Between File Captures")
-ax.set_ylabel("Δ Volume")
+ax.set_title("Δ Volume Between Captures")
+ax.set_ylabel("Change In Volume")
 ax.grid(True, alpha=0.3)
 ax.set_xticks([])
 st.pyplot(fig)
