@@ -38,7 +38,6 @@ for uploaded in uploaded_files:
         label = f"{HH}:{MM}:{SS}"
     upload_times.append(base_time)
     upload_labels.append(label)
-
     df = pd.read_csv(uploaded)
     df["timestamp"] = base_time + pd.to_timedelta(np.arange(len(df)) * 5, unit="min")
     dfs.append(df)
@@ -75,21 +74,21 @@ if not filtered_list:
 final_df = pd.concat(filtered_list).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
 # ------------------------------------------------------------
-# Show full combined table
+# Show combined data table
 # ------------------------------------------------------------
 st.subheader(f"🧾 Combined Data for expiryDate = {selected_expiry}")
 st.dataframe(final_df)
 
 # ------------------------------------------------------------
-# Build summary table: time(label), volume, lastPrice, Δ volume
+# Build summary table: time(label), volume, lastPrice, Δ Volume
 # ------------------------------------------------------------
 summary_records = []
 for lbl in upload_labels:
     sub = final_df[final_df["label"] == lbl]
     if sub.empty:
         continue
-    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan         # first row volume
-    price_val = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan # last row lastPrice
+    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan
+    price_val = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan
     summary_records.append({
         "time": lbl,
         "volume": vol_val,
@@ -99,30 +98,42 @@ for lbl in upload_labels:
 summary_df = pd.DataFrame(summary_records)
 summary_df["Δ Volume"] = summary_df["volume"].diff()
 
-st.subheader("📊 Volume & Last Price Summary")
+st.subheader("📊 Volume & Last Price Summary")
 st.dataframe(summary_df)
 
 # ------------------------------------------------------------
-# Plot: Δ Volume (bar) + Last Price (line)
+# Plot: restrict Δ Volume bars to ~lower 30% of Y‑axis
 # ------------------------------------------------------------
-st.subheader("📈 Last Price vs Δ Volume Chart")
+st.subheader("📈 Last Price vs Δ Volume Chart (Δ Volume scaled to 30%)")
+
+# determine scaling factor relative to last price range
+if not summary_df["last_price"].isna().all():
+    price_range = summary_df["last_price"].max() - summary_df["last_price"].min()
+else:
+    price_range = 1
+vol_range = summary_df["Δ Volume"].abs().max() if not summary_df["Δ Volume"].isna().all() else 1
+# scale ΔVol to 30% of price range
+scale_factor = 0.3 * price_range / vol_range if vol_range != 0 else 1
 
 fig, ax1 = plt.subplots(figsize=(10, 4))
 
-# bar plot for Δ Volume
-ax1.bar(summary_df["time"], summary_df["Δ Volume"],
-        color="orange", alpha=0.5, label="Δ Volume")
-ax1.set_ylabel("Δ Volume", color="orange")
-ax1.grid(True, axis="y", alpha=0.3)
+# scaled bar heights centered near min price
+min_price = summary_df["last_price"].min() if not summary_df["last_price"].isna().all() else 0
+scaled_vol = summary_df["Δ Volume"] * scale_factor + (min_price - 0.3 * price_range * 0.2)
 
-# twin axis for last price
-ax2 = ax1.twinx()
-ax2.plot(summary_df["time"], summary_df["last_price"],
+ax1.bar(summary_df["time"], scaled_vol,
+        color="orange", alpha=0.5, label="Δ Volume (scaled)")
+ax1.set_ylim(min_price - 0.35 * price_range, summary_df["last_price"].max() * 1.05)
+
+# overlay last price line on top
+ax1.plot(summary_df["time"], summary_df["last_price"],
          color="tab:blue", marker="o", label="Last Price")
-ax2.set_ylabel("Last Price", color="tab:blue")
 
 ax1.set_xlabel("Capture Label (Time)")
-ax1.set_title(f"Last Price vs Δ Volume — Expiry {selected_expiry}")
+ax1.set_ylabel("Value / Δ Volume (scaled)")
+ax1.set_title(f"Last Price vs Δ Volume — Expiry {selected_expiry}")
+ax1.legend(loc="upper left")
+ax1.grid(True, alpha=0.3)
 
 fig.tight_layout()
 st.pyplot(fig)
