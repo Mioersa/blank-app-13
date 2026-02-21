@@ -3,6 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
+import matplotlib.pyplot as plt
 
 st.set_page_config(page_title="Intraday Futures Analytics", layout="wide")
 
@@ -21,13 +22,13 @@ if not uploaded_files:
     st.stop()
 
 # ------------------------------------------------------------
-# Load All Files + timestamps
+# Load All Files
 # ------------------------------------------------------------
 dfs, upload_times, upload_labels = [], [], []
 
 for uploaded in uploaded_files:
     fn = uploaded.name
-    # filename pattern: ***_ddmmyyyy_hhmmss.csv
+    # extract timestamp from filename pattern ***_ddmmyyyy_hhmmss.csv
     m = re.search(r"_(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})\.csv$", fn)
     base_time = datetime.now()
     label = "unknown"
@@ -43,18 +44,18 @@ for uploaded in uploaded_files:
     dfs.append(df)
 
 # ------------------------------------------------------------
-# Dropdown for expiryDate (from first file)
+# Dropdown for expiryDate from first file
 # ------------------------------------------------------------
 first_df = dfs[0]
 if "expiryDate" not in first_df.columns:
-    st.error("❌  Column 'expiryDate' not found in uploaded CSVs.")
+    st.error("❌ Column 'expiryDate' not found in uploaded CSVs.")
     st.stop()
 
 expiry_options = sorted(first_df["expiryDate"].unique())
 selected_expiry = st.selectbox("Select Expiry Date (from first file)", expiry_options)
 
 # ------------------------------------------------------------
-# Filter all files for selected expiryDate + combine
+# Filter all files for selected expiryDate
 # ------------------------------------------------------------
 filtered_list = []
 for i, df_file in enumerate(dfs):
@@ -74,51 +75,54 @@ if not filtered_list:
 final_df = pd.concat(filtered_list).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
 # ------------------------------------------------------------
-# Display Combined Table for Selected Expiry
+# Show full combined table
 # ------------------------------------------------------------
-st.subheader(f"🧾 Combined Data for expiryDate = {selected_expiry}")
+st.subheader(f"🧾 Combined Data for expiryDate = {selected_expiry}")
 st.dataframe(final_df)
-st.caption(f"{len(final_df):,} rows | {final_df['contract'].nunique()} contracts | {len(filtered_list)} files")
 
 # ------------------------------------------------------------
-# New Table: volume summary vs label
+# Build summary table: time(label), volume, lastPrice, Δ volume
 # ------------------------------------------------------------
-st.subheader("📊 Volume Summary by Capture Time")
-
-# get representative volume per file (e.g. first row by label)
 summary_records = []
 for lbl in upload_labels:
     sub = final_df[final_df["label"] == lbl]
     if sub.empty:
         continue
-    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan
-    summary_records.append({"time": lbl, "volume": vol_val})
+    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan         # first row volume
+    price_val = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan # last row lastPrice
+    summary_records.append({
+        "time": lbl,
+        "volume": vol_val,
+        "last_price": price_val,
+    })
 
 summary_df = pd.DataFrame(summary_records)
+summary_df["Δ Volume"] = summary_df["volume"].diff()
 
-# compute volume differences
-summary_df["volume_difference"] = summary_df["volume"].diff()
-
-# Display final summary table
+st.subheader("📊 Volume & Last Price Summary")
 st.dataframe(summary_df)
 
 # ------------------------------------------------------------
-# Visualization
+# Plot: Δ Volume (bar) + Last Price (line)
 # ------------------------------------------------------------
-st.subheader("📈 Volume & Δ Volume Chart")
+st.subheader("📈 Last Price vs Δ Volume Chart")
 
-import matplotlib.pyplot as plt
+fig, ax1 = plt.subplots(figsize=(10, 4))
 
-fig, ax = plt.subplots(figsize=(10, 4))
-ax.plot(summary_df["time"], summary_df["volume"],
-        marker="o", color="tab:blue", label="Volume")
-ax.bar(summary_df["time"], summary_df["volume_difference"],
-       color="orange", alpha=0.4, label="Δ Volume")
+# bar plot for Δ Volume
+ax1.bar(summary_df["time"], summary_df["Δ Volume"],
+        color="orange", alpha=0.5, label="Δ Volume")
+ax1.set_ylabel("Δ Volume", color="orange")
+ax1.grid(True, axis="y", alpha=0.3)
 
-ax.set_title(f"Volume Change between Captures — Expiry {selected_expiry}")
-ax.set_xlabel("Capture Label (Time)")
-ax.set_ylabel("Volume / Δ Volume")
-ax.grid(True, alpha=0.3)
-ax.legend()
+# twin axis for last price
+ax2 = ax1.twinx()
+ax2.plot(summary_df["time"], summary_df["last_price"],
+         color="tab:blue", marker="o", label="Last Price")
+ax2.set_ylabel("Last Price", color="tab:blue")
 
+ax1.set_xlabel("Capture Label (Time)")
+ax1.set_title(f"Last Price vs Δ Volume — Expiry {selected_expiry}")
+
+fig.tight_layout()
 st.pyplot(fig)
