@@ -28,16 +28,20 @@ if not uploaded_files:
 # ------------------------------------------------------------
 dfs = []
 upload_times = []
+upload_labels = []
 
 for uploaded in uploaded_files:
     fn = uploaded.name
     # extract timestamp from filename ***_ddmmyyyy_hhmmss.csv
     m = re.search(r"_(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})\.csv$", fn)
     base_time = datetime.now()
+    label = "unknown"
     if m:
         dd, mm, yyyy, HH, MM, SS = m.groups()
         base_time = datetime(int(yyyy), int(mm), int(dd), int(HH), int(MM), int(SS))
+        label = f"{HH}:{MM}:{SS}"
     upload_times.append(base_time)
+    upload_labels.append(label)
     df = pd.read_csv(uploaded)
     df["timestamp"] = base_time + pd.to_timedelta(np.arange(len(df)) * 5, unit="min")
     dfs.append(df)
@@ -159,7 +163,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Extra Chart: Last Price vs Time (direct)
+# Chart: Last Price vs Time (custom x‑markers per file)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -169,10 +173,17 @@ if selected:
     if not sub.empty:
         fig, ax = plt.subplots(figsize=(8, 3))
         ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
-        ax.set_title(f"{selected} — Last Price vs Time")
-        ax.set_xlabel("Timestamp")
+        ax.set_title(f"{selected} — Last Price vs Captured Times")
         ax.set_ylabel("Last Price")
         ax.grid(True, alpha=0.3)
+
+        # mark capture times from filenames
+        for t, lbl in zip(upload_times, upload_labels):
+            ax.axvline(t, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
+            ax.text(t, sub["lastPrice"].min(), lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="gray")
+
+        # remove default time ticks
+        ax.set_xticks([])
         st.pyplot(fig)
     else:
         st.info("No lastPrice data to plot.")
@@ -180,17 +191,28 @@ else:
     st.info("No contract found for price‑vs‑time chart.")
 
 # ------------------------------------------------------------
-# New Chart: Volume Change vs Time
+# Chart: Volume Change vs Time (custom x‑markers per file)
 # ------------------------------------------------------------
-st.header("Volume Change vs Time")
+st.header("Volume Change vs Captured Times")
 
 df["vol_change"] = df["volume"].diff()
-vol_chart = df.set_index("timestamp")[["vol_change"]].dropna()
+subv = df[["timestamp", "vol_change"]].dropna().copy()
 
-if not vol_chart.empty:
-    st.line_chart(vol_chart)
+if not subv.empty:
+    fig, ax = plt.subplots(figsize=(8, 3))
+    ax.plot(subv["timestamp"], subv["vol_change"], color="tab:blue", linewidth=1.2)
+    ax.set_title("Volume Change vs Captured Times")
+    ax.set_ylabel("Δ Volume")
+    ax.grid(True, alpha=0.3)
+
+    for t, lbl in zip(upload_times, upload_labels):
+        ax.axvline(t, color="red", linestyle="--", linewidth=0.8, alpha=0.6)
+        ax.text(t, subv["vol_change"].min(), lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="red")
+
+    ax.set_xticks([])
+    st.pyplot(fig)
 else:
-    st.info("No volume data available to compute changes.")
+    st.info("No volume data to compute changes.")
 
 # ------------------------------------------------------------
 # Final
