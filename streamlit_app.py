@@ -27,7 +27,7 @@ if not uploaded_files:
 # Load & Preview
 # ------------------------------------------------------------
 dfs = []
-upload_times = []   # keep filename timestamps
+upload_times = []
 
 for uploaded in uploaded_files:
     fn = uploaded.name
@@ -84,7 +84,7 @@ df["spec_ratio"] = df["premiumTurnOver"] / df["totalTurnover"]
 df["vwap_like"] = df["value"] / df["volume"]
 df["vol_vol"] = df["volume"].rolling(5).corr(df["real_vol"])
 
-# Rolling regression (robust)
+# Rolling regression
 df["ret_lag1"] = df["log_ret"].shift(1)
 betas = []
 window = 50
@@ -138,7 +138,7 @@ if len(contracts) >= 2:
     spread_df = sp
 
 # ------------------------------------------------------------
-# Streamlit charts (non‑WebGL)
+# Streamlit charts
 # ------------------------------------------------------------
 st.header("Momentum & Direction")
 st.line_chart(df.set_index("timestamp")[["closePrice", "ma5", "ma20"]])
@@ -159,7 +159,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Extra Chart: Last Price vs Time (raw, no relative move)
+# Extra Chart: Last Price vs Time (dual‑axis for visibility)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -167,12 +167,21 @@ selected = contracts[0] if len(contracts) else None
 if selected:
     sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
     if not sub.empty:
-        fig, ax = plt.subplots(figsize=(8, 3))
-        ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1)
-        ax.set_title(f"{selected} — Last Price vs Time")
-        ax.set_xlabel("Timestamp")
-        ax.set_ylabel("Last Price")
-        ax.grid(True, alpha=0.3)
+        sub["pct_move"] = (sub["lastPrice"] / sub["lastPrice"].iloc[0] - 1) * 100
+
+        fig, ax1 = plt.subplots(figsize=(8, 3))
+        ax1.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
+        ax1.set_ylabel("Last Price", color="tab:orange")
+        ax1.tick_params(axis="y", labelcolor="tab:orange")
+        ax1.grid(True, alpha=0.3)
+
+        ax2 = ax1.twinx()
+        ax2.plot(sub["timestamp"], sub["pct_move"], color="tab:blue", linewidth=1, alpha=0.7)
+        ax2.set_ylabel("Change (%)", color="tab:blue")
+        ax2.tick_params(axis="y", labelcolor="tab:blue")
+
+        ax1.set_title(f"{selected} — Last Price & % Change vs Time")
+        ax1.set_xlabel("Timestamp")
         st.pyplot(fig)
     else:
         st.info("No lastPrice data to plot.")
