@@ -159,7 +159,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Extra Chart: Last Price vs Time (dual‑axis for visibility)
+# Extra Chart: Last Price vs Time (direct)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -167,26 +167,30 @@ selected = contracts[0] if len(contracts) else None
 if selected:
     sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
     if not sub.empty:
-        sub["pct_move"] = (sub["lastPrice"] / sub["lastPrice"].iloc[0] - 1) * 100
-
-        fig, ax1 = plt.subplots(figsize=(8, 3))
-        ax1.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
-        ax1.set_ylabel("Last Price", color="tab:orange")
-        ax1.tick_params(axis="y", labelcolor="tab:orange")
-        ax1.grid(True, alpha=0.3)
-
-        ax2 = ax1.twinx()
-        ax2.plot(sub["timestamp"], sub["pct_move"], color="tab:blue", linewidth=1, alpha=0.7)
-        ax2.set_ylabel("Change (%)", color="tab:blue")
-        ax2.tick_params(axis="y", labelcolor="tab:blue")
-
-        ax1.set_title(f"{selected} — Last Price & % Change vs Time")
-        ax1.set_xlabel("Timestamp")
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
+        ax.set_title(f"{selected} — Last Price vs Time")
+        ax.set_xlabel("Timestamp")
+        ax.set_ylabel("Last Price")
+        ax.grid(True, alpha=0.3)
         st.pyplot(fig)
     else:
         st.info("No lastPrice data to plot.")
 else:
     st.info("No contract found for price‑vs‑time chart.")
+
+# ------------------------------------------------------------
+# New Chart: Volume Change vs Time
+# ------------------------------------------------------------
+st.header("Volume Change vs Time")
+
+df["vol_change"] = df["volume"].diff()
+vol_chart = df.set_index("timestamp")[["vol_change"]].dropna()
+
+if not vol_chart.empty:
+    st.line_chart(vol_chart)
+else:
+    st.info("No volume data available to compute changes.")
 
 # ------------------------------------------------------------
 # Final
