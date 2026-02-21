@@ -138,7 +138,7 @@ if len(contracts) >= 2:
     spread_df = sp
 
 # ------------------------------------------------------------
-# Normal Streamlit charts (no WebGL)
+# Streamlit charts (non‑WebGL)
 # ------------------------------------------------------------
 st.header("Momentum & Direction")
 st.line_chart(df.set_index("timestamp")[["closePrice", "ma5", "ma20"]])
@@ -159,7 +159,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Extra Chart: Last Price vs Time (relative move)
+# Extra Chart: Last Price vs Time (raw, no relative move)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -167,13 +167,11 @@ selected = contracts[0] if len(contracts) else None
 if selected:
     sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
     if not sub.empty:
-        base = sub["lastPrice"].iloc[0]
-        sub["rel_move"] = sub["lastPrice"] - base
         fig, ax = plt.subplots(figsize=(8, 3))
-        ax.plot(sub["timestamp"], sub["rel_move"], color="tab:orange", linewidth=1)
-        ax.set_title(f"{selected} — Last Price Change vs Time")
+        ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1)
+        ax.set_title(f"{selected} — Last Price vs Time")
         ax.set_xlabel("Timestamp")
-        ax.set_ylabel("Δ Price (from start)")
+        ax.set_ylabel("Last Price")
         ax.grid(True, alpha=0.3)
         st.pyplot(fig)
     else:
