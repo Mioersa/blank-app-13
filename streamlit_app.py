@@ -171,7 +171,7 @@ if selected:
         st.pyplot(fig)
 
 # ------------------------------------------------------------
-# Volume Change Between Files
+# Volume Change Between Files (Filtered)
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
@@ -192,27 +192,34 @@ for i, df_part in enumerate(dfs):
         "current_volume_first": curr_first,
         "delta_volume": delta
     })
-    prev_vol_last = curr_first  # chain update
+    prev_vol_last = curr_first
 
 vol_change_table = pd.DataFrame(records)
 
+# --- Filter out 50% negligible deltas ---
+if not vol_change_table.empty:
+    cutoff_index = int(len(vol_change_table) * 0.5)
+    filtered = vol_change_table.reindex(vol_change_table["delta_volume"].abs().sort_values(ascending=False).index)
+    filtered = filtered.head(len(vol_change_table) - cutoff_index)
+else:
+    filtered = vol_change_table
+
 # --- Plot ---
 fig, ax = plt.subplots(figsize=(18, 9))
-ax.bar(vol_change_table["capture_time"], vol_change_table["delta_volume"],
+ax.bar(filtered["capture_time"], filtered["delta_volume"],
        width=0.001, color="tab:blue", alpha=0.75)
-for t, lbl in zip(upload_times, upload_labels):
+for t, lbl in zip(filtered["capture_time"], filtered["label"]):
     ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center",
             fontsize=8, color="red")
-ax.set_title("Δ Volume Between Captures (Chained Comparison)")
+ax.set_title("Δ Volume Between Captures (Filtered — Top 50% by Magnitude)")
 ax.set_ylabel("Change In Volume")
 ax.grid(True, alpha=0.3)
 ax.set_xticks([])
 st.pyplot(fig)
 
 # --- Table (below chart) ---
-st.subheader("📊 Detailed Volume Change Data")
-st.dataframe(vol_change_table[["capture_time", "label",
-                               "previous_volume_last",
-                               "current_volume_first",
-                               "delta_volume"]])
-
+st.subheader("📊 Detailed Volume Change Data (Filtered)")
+st.dataframe(filtered[["capture_time", "label",
+                       "previous_volume_last",
+                       "current_volume_first",
+                       "delta_volume"]])
