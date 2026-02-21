@@ -24,7 +24,7 @@ if not uploaded_files:
     st.stop()
 
 # ------------------------------------------------------------
-# Load & Preview
+# Load & Combine Uploaded Files
 # ------------------------------------------------------------
 dfs, upload_times, upload_labels = [], [], []
 
@@ -46,9 +46,40 @@ for uploaded in uploaded_files:
 
 raw_df = pd.concat(dfs).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
-st.subheader("📄 Data Preview")
+# ------------------------------------------------------------
+# 📄 Data Preview + Summary Table
+# ------------------------------------------------------------
+st.subheader("📄 Data Preview (First 20 Rows)")
 st.dataframe(raw_df.head(20))
-st.caption(f"{len(raw_df):,} rows | {raw_df['contract'].nunique()} contracts | {raw_df['expiryDate'].nunique()} expiries")
+
+# --- Add summary table ---
+summary_data = {
+    "Metric": [
+        "Total Rows",
+        "Unique Contracts",
+        "Unique Expiries",
+        "Earliest Timestamp",
+        "Latest Timestamp",
+        "Average Volume",
+        "Median Close Price",
+        "Average ATR (14)",
+    ],
+    "Value": [
+        f"{len(raw_df):,}",
+        raw_df["contract"].nunique(),
+        raw_df["expiryDate"].nunique(),
+        str(raw_df["timestamp"].min()) if "timestamp" in raw_df else "-",
+        str(raw_df["timestamp"].max()) if "timestamp" in raw_df else "-",
+        round(raw_df["volume"].mean(), 2) if "volume" in raw_df else np.nan,
+        round(raw_df["closePrice"].median(), 2) if "closePrice" in raw_df else np.nan,
+        round(raw_df["closePrice"].diff().abs().rolling(14).mean().mean(), 4)
+        if "closePrice" in raw_df else np.nan,
+    ],
+}
+
+summary_df = pd.DataFrame(summary_data)
+st.subheader("📊 Data Summary")
+st.table(summary_df)
 
 # ------------------------------------------------------------
 # Run analytics trigger
@@ -171,7 +202,7 @@ if selected:
         st.pyplot(fig)
 
 # ------------------------------------------------------------
-# Volume Change Between Files (Filtered)
+# Volume Change Between Files (Filtered via slider)
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
@@ -196,9 +227,17 @@ for i, df_part in enumerate(dfs):
 
 vol_change_table = pd.DataFrame(records)
 
-# --- Filter out 50% negligible deltas ---
+# --- Slider for filtering threshold ---
+keep_percent = st.slider(
+    "Show top % changes (by |Δ Volume|)",
+    min_value=20, max_value=80, value=50, step=5,
+    help="Adjust what fraction of biggest Δ Volume changes are displayed."
+)
+
+# --- Filter negligible deltas dynamically ---
 if not vol_change_table.empty:
-    cutoff_index = int(len(vol_change_table) * 0.5)
+    keep_fraction = keep_percent / 100
+    cutoff_index = int(len(vol_change_table) * (1 - keep_fraction))
     filtered = vol_change_table.reindex(vol_change_table["delta_volume"].abs().sort_values(ascending=False).index)
     filtered = filtered.head(len(vol_change_table) - cutoff_index)
 else:
@@ -211,7 +250,7 @@ ax.bar(filtered["capture_time"], filtered["delta_volume"],
 for t, lbl in zip(filtered["capture_time"], filtered["label"]):
     ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center",
             fontsize=8, color="red")
-ax.set_title("Δ Volume Between Captures (Filtered — Top 50% by Magnitude)")
+ax.set_title(f"Δ Volume Between Captures — Top {keep_percent}% by Magnitude")
 ax.set_ylabel("Change In Volume")
 ax.grid(True, alpha=0.3)
 ax.set_xticks([])
