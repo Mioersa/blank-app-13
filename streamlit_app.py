@@ -105,13 +105,20 @@ st.dataframe(summary_df)
 # ------------------------------------------------------------
 # Visualization
 # ------------------------------------------------------------
-fig, ax = st.pyplot(figsize=(10, 4))
-plt = ax
-ax.plot(summary_df["time"], summary_df["volume"], marker="o", color="tab:blue", label="Volume")
-ax.bar(summary_df["time"], summary_df["volume_difference"], color="orange", alpha=0.4, label="Δ Volume")
+st.subheader("📈 Volume & Δ Volume Chart")
+
+import matplotlib.pyplot as plt
+
+fig, ax = plt.subplots(figsize=(10, 4))
+ax.plot(summary_df["time"], summary_df["volume"],
+        marker="o", color="tab:blue", label="Volume")
+ax.bar(summary_df["time"], summary_df["volume_difference"],
+       color="orange", alpha=0.4, label="Δ Volume")
+
 ax.set_title(f"Volume Change between Captures — Expiry {selected_expiry}")
 ax.set_xlabel("Capture Label (Time)")
-ax.set_ylabel("Volume / Δ Volume")
+ax.set_ylabel("Volume / Δ Volume")
 ax.grid(True, alpha=0.3)
 ax.legend()
+
 st.pyplot(fig)
