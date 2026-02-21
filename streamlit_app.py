@@ -87,7 +87,7 @@ sumdf["Δ Volume"] = sumdf["volume"].diff()
 sumdf["Δ Price"] = sumdf["last_price"].diff()
 
 # ------------------------------------------------------------
-# Extra indicators
+# Indicators
 # ------------------------------------------------------------
 sumdf["OBV"] = (np.sign(sumdf["Δ Price"].fillna(0)) * sumdf["Δ Volume"].fillna(0)).cumsum()
 
@@ -109,7 +109,7 @@ st.subheader("📊 Volume & Price Indicators Summary")
 st.dataframe(sumdf)
 
 # ------------------------------------------------------------
-# Plot
+# Plot section – y-axis scrollable
 # ------------------------------------------------------------
 st.subheader("📈 Last Price (top) & Δ Volume (bottom + OBV overlay + Spike markers)")
 
@@ -117,101 +117,79 @@ axis_type = st.radio("Δ Volume Y‑axis scale", ["linear", "log"], horizontal
 
 fig = go.Figure()
 
-# bottom Δ Volume bars
 fig.add_trace(go.Bar(
     x=sumdf["time"], y=sumdf["Δ Volume"],
-    name="Δ Volume", marker_color="orange",
-    opacity=0.6, yaxis="y2",
+    name="Δ Volume", marker_color="orange", opacity=0.6, yaxis="y2"
 ))
-
-# Spike markers
 fig.add_trace(go.Scatter(
     x=sumdf.loc[sumdf["spike_flag"], "time"],
     y=sumdf.loc[sumdf["spike_flag"], "Δ Volume"],
     mode="markers", marker=dict(color="red", size=10, symbol="diamond"),
     name="Spike (>2σ)", yaxis="y2",
 ))
-
-# OBV line under volume axis
 fig.add_trace(go.Scatter(
     x=sumdf["time"], y=sumdf["OBV"],
     mode="lines", line=dict(color="green", width=2, dash="dot"),
     name="OBV", yaxis="y2",
 ))
-
-# top Last Price line
 fig.add_trace(go.Scatter(
     x=sumdf["time"], y=sumdf["last_price"],
-    mode="lines+markers", name="Last Price",
-    line=dict(color="blue"), yaxis="y1",
+    mode="lines+markers", line=dict(color="blue"), name="Last Price", yaxis="y1"
 ))
 
 fig.update_layout(
-    height=650,
+    height=700,
     margin=dict(l=60, r=40, t=60, b=60),
     xaxis=dict(title="Capture Time (HH:MM)", rangeslider=dict(visible=True)),
-    yaxis=dict(domain=[0.45, 1.0], title="Last Price",
-               tickformat=".0f", separatethousands=True),
-    yaxis2=dict(domain=[0.0, 0.35], title="Δ Volume / OBV",
-                rangemode="tozero", type=axis_type),
+    yaxis=dict(domain=[0.45, 1.0], title="Last Price"),
+    yaxis2=dict(domain=[0.0, 0.35], title="Δ Volume / OBV", type=axis_type, rangemode="normal"),
     title=f"Last Price and Δ Volume with OBV & Spikes — Expiry {selected_expiry}",
     legend=dict(orientation="h"),
     hovermode="x unified",
 )
-st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
+
+# make both axes zoom scrollable (drag & zoom mode)
+config = {
+    "scrollZoom": True,
+    "displaylogo": False,
+    "modeBarButtonsToAdd": ["zoom2d", "pan2d", "lasso2d", "select2d"]
+}
+st.plotly_chart(fig, use_container_width=True, config=config)
 
 # ------------------------------------------------------------
-# Human readable interpretation
+# Insights & interval-wise signals
 # ------------------------------------------------------------
-st.subheader("🧠 Volume Behavior Insights")
+st.subheader("🧠 Volume Behavior Insights (Per Interval)")
 
-desc = []
-if sumdf["Cum_Vol"].iloc[-1] > 0:
-    desc.append("✅ Net positive cumulative volume → overall **accumulation**.")
-else:
-    desc.append("⚠️ Net negative cumulative volume → possible **distribution**.")
+def classify_interval(row):
+    slope = np.sign(row["Δ Volume"]) or 0
+    corr = np.sign(row["RollCorr"]) if not np.isnan(row["RollCorr"]) else 0
+    score = slope * corr
+    if score > 0:
+        return "🟢 Bullish"
+    elif score < 0:
+        return "🔴 Bearish"
+    else:
+        return "⚪ Neutral"
 
-spike_ratio = sumdf["spike_flag"].mean()
-if spike_ratio > 0.2:
-    desc.append("🚨 Frequent volume spikes → **high speculative bursts**.")
-elif spike_ratio > 0.05:
-    desc.append("⏫ Occasional spikes → moderate bursts.")
-else:
-    desc.append("🟢 Few spikes → stable flow.")
+sumdf["Signal"] = sumdf.apply(classify_interval, axis=1)
 
-rvr_mean = sumdf["RVR"].mean()
-if rvr_mean > 1.5:
-    desc.append("🔥 RVR > 1.5 → high participation.")
-elif rvr_mean < 0.8:
-    desc.append("💤 Low RVR → weak engagement.")
-else:
-    desc.append("⚖️ Normal RVR → balanced flow.")
+interval_signals = sumdf[["time", "Δ Volume", "Δ Price", "OBV", "RollCorr", "Signal"]]
+st.dataframe(interval_signals)
 
-osc_last = sumdf["Vol_Osc"].iloc[-1]
-desc.append("📈 Positive osc → momentum pickup." if osc_last > 0 else "📉 Negative osc → waning momentum.")
-corr_last = sumdf["RollCorr"].iloc[-1]
-if corr_last > 0.5:
-    desc.append("📊 Strong +corr → volume confirming trend.")
-elif corr_last < -0.3:
-    desc.append("⚡ Negative corr → possible divergence.")
-else:
-    desc.append("😐 Neutral corr → mixed participation.")
-
-st.markdown("\n".join(desc))
-
-# ------------------------------------------------------------
-# 🎯 Automated Bullish/Bearish/Neutral Signal
-# ------------------------------------------------------------
-slope = np.sign(sumdf["Cum_Vol"].iloc[-1] - sumdf["Cum_Vol"].iloc[-5]) if len(sumdf) > 5 else np.sign(sumdf["Cum_Vol"].iloc[-1])
-corr_sign = np.sign(corr_last)
+# Overall signal
+last_rows = sumdf.tail(5)
+slope = np.sign(last_rows["Cum_Vol"].iloc[-1] - last_rows["Cum_Vol"].iloc[0])
+corr_sign = np.sign(sumdf["RollCorr"].iloc[-1])
 score = slope * corr_sign
 
 if score > 0:
-    signal = "🟢 **Bullish Accumulation**"
+    overall_signal = "🟢 **Bullish Accumulation**"
 elif score < 0:
-    signal = "🔴 **Bearish Distribution**"
+    overall_signal = "🔴 **Bearish Distribution**"
 else:
-    signal = "⚪ **Neutral / Indecisive**"
+    overall_signal = "⚪ **Neutral / Indecisive**"
 
-st.subheader("📈 Auto‑Signal")
-st.markdown(signal)
+st.subheader("📈 Overall Auto‑Signal")
+st.markdown(overall_signal)
+st.success("✅ OBV + Spikes + Per‑Interval Signal + Scrollable Y‑axis Complete.")
