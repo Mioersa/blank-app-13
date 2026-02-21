@@ -16,19 +16,18 @@ uploaded_files = st.sidebar.file_uploader(
     accept_multiple_files=True,
 )
 
-# stop early if no files
 if not uploaded_files:
     st.warning("👋 Upload at least one CSV to start.")
     st.stop()
 
 # ------------------------------------------------------------
-# Load All Files
+# Load All Files + timestamps
 # ------------------------------------------------------------
 dfs, upload_times, upload_labels = [], [], []
 
 for uploaded in uploaded_files:
     fn = uploaded.name
-    # extract timestamp from filename ***_ddmmyyyy_hhmmss.csv
+    # filename pattern: ***_ddmmyyyy_hhmmss.csv
     m = re.search(r"_(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})\.csv$", fn)
     base_time = datetime.now()
     label = "unknown"
@@ -44,18 +43,18 @@ for uploaded in uploaded_files:
     dfs.append(df)
 
 # ------------------------------------------------------------
-# Dropdown for expiryDate from first file
+# Dropdown for expiryDate (from first file)
 # ------------------------------------------------------------
 first_df = dfs[0]
 if "expiryDate" not in first_df.columns:
-    st.error("❌ Column 'expiryDate' not found in uploaded CSVs.")
+    st.error("❌  Column 'expiryDate' not found in uploaded CSVs.")
     st.stop()
 
 expiry_options = sorted(first_df["expiryDate"].unique())
 selected_expiry = st.selectbox("Select Expiry Date (from first file)", expiry_options)
 
 # ------------------------------------------------------------
-# Filter all files and merge rows with selected expiryDate
+# Filter all files for selected expiryDate + combine
 # ------------------------------------------------------------
 filtered_list = []
 for i, df_file in enumerate(dfs):
@@ -75,25 +74,44 @@ if not filtered_list:
 final_df = pd.concat(filtered_list).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
 # ------------------------------------------------------------
-# Display Complete Table
+# Display Combined Table for Selected Expiry
 # ------------------------------------------------------------
 st.subheader(f"🧾 Combined Data for expiryDate = {selected_expiry}")
 st.dataframe(final_df)
+st.caption(f"{len(final_df):,} rows | {final_df['contract'].nunique()} contracts | {len(filtered_list)} files")
 
-# basic info
-st.caption(
-    f"{len(final_df):,} rows | "
-    f"{final_df['contract'].nunique()} contracts | "
-    f"Upload captures: {len(filtered_list)} files"
-)
+# ------------------------------------------------------------
+# New Table: volume summary vs label
+# ------------------------------------------------------------
+st.subheader("📊 Volume Summary by Capture Time")
 
-# optional summary table
-summary = {
-    "Total Rows": [len(final_df)],
-    "Contracts": [final_df["contract"].nunique()],
-    "First Timestamp": [final_df["timestamp"].min()],
-    "Last Timestamp": [final_df["timestamp"].max()],
-    "Avg Volume": [round(final_df['volume'].mean(), 2) if 'volume' in final_df else np.nan],
-    "Avg Close Price": [round(final_df['closePrice'].mean(), 2) if 'closePrice' in final_df else np.nan],
-}
-st.table(pd.DataFrame(summary))
+# get representative volume per file (e.g. first row by label)
+summary_records = []
+for lbl in upload_labels:
+    sub = final_df[final_df["label"] == lbl]
+    if sub.empty:
+        continue
+    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan
+    summary_records.append({"time": lbl, "volume": vol_val})
+
+summary_df = pd.DataFrame(summary_records)
+
+# compute volume differences
+summary_df["volume_difference"] = summary_df["volume"].diff()
+
+# Display final summary table
+st.dataframe(summary_df)
+
+# ------------------------------------------------------------
+# Visualization
+# ------------------------------------------------------------
+fig, ax = st.pyplot(figsize=(10, 4))
+plt = ax
+ax.plot(summary_df["time"], summary_df["volume"], marker="o", color="tab:blue", label="Volume")
+ax.bar(summary_df["time"], summary_df["volume_difference"], color="orange", alpha=0.4, label="Δ Volume")
+ax.set_title(f"Volume Change between Captures — Expiry {selected_expiry}")
+ax.set_xlabel("Capture Label (Time)")
+ax.set_ylabel("Volume / Δ Volume")
+ax.grid(True, alpha=0.3)
+ax.legend()
+st.pyplot(fig)
