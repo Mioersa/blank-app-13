@@ -227,17 +227,7 @@ fig4.update_layout(
     hovermode="x unified"
 )
 st.plotly_chart(fig4, use_container_width=True, config=config)
-# ------------------------------------------------------------
-# Chart 5 – RVR and Volume Oscillator signals
-# ------------------------------------------------------------
-st.subheader("⚙️ Chart 5 – RVR (Relative Vol Ratio) and Volume Oscillator Signals")
 
-fig5 = go.Figure()
-
-# RVR bars (color by strength)
-fig5.add_trace(go.Bar(
-    x=sumdf["time"], y=sumdf["RVR"],
-    marker
 
 # ------------------------------------------------------------
 # Overall signal
