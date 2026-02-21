@@ -3,7 +3,7 @@ import pandas as pd
 import numpy as np
 import re
 from datetime import datetime
-import matplotlib.pyplot as plt
+import plotly.graph_objects as go
 
 st.set_page_config(page_title="Intraday Futures Analytics", layout="wide")
 
@@ -33,7 +33,7 @@ for uploaded in uploaded_files:
     if m:
         dd, mm, yyyy, HH, MM, SS = m.groups()
         base_time = datetime(int(yyyy), int(mm), int(dd), int(HH), int(MM), int(SS))
-        label = f"{HH}:{MM}:{SS}"
+        label = f"{HH}:{MM}"              # <-- keep only HH:MM
     upload_times.append(base_time)
     upload_labels.append(label)
     df = pd.read_csv(uploaded)
@@ -47,6 +47,7 @@ first_df = dfs[0]
 if "expiryDate" not in first_df.columns:
     st.error("❌ Column 'expiryDate' not found in uploaded CSVs.")
     st.stop()
+
 expiry_options = sorted(first_df["expiryDate"].unique())
 selected_expiry = st.selectbox("Select Expiry Date (from first file)", expiry_options)
 
@@ -86,39 +87,62 @@ for lbl in upload_labels:
         continue
     vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan
     price_val = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan
-    summary_records.append({"time": lbl, "volume": vol_val, "last_price": price_val})
+    summary_records.append({
+        "time": lbl,
+        "volume": vol_val,
+        "last_price": price_val,
+    })
 
 summary_df = pd.DataFrame(summary_records)
 summary_df["Δ Volume"] = summary_df["volume"].diff()
 
+# ------------------------------------------------------------
+# Display summary table
+# ------------------------------------------------------------
 st.subheader("📊 Volume & Last Price Summary")
 st.dataframe(summary_df)
 
 # ------------------------------------------------------------
-# Split Chart: Top = Last Price line, Bottom = Δ Volume bars (30%)
+# Plotly scrollable chart
 # ------------------------------------------------------------
-st.subheader("📈 Last Price (top) & Δ Volume (bottom 30%) Chart")
+st.subheader("📈 Scrollable Last Price (top) & Δ Volume (bottom 30%) Chart")
 
-fig, (ax_price, ax_vol) = plt.subplots(
-    2, 1, figsize=(28, 14), gridspec_kw={"height_ratios": [0.7, 0.3]}, sharex=True
+fig = go.Figure()
+
+# Δ Volume (bar, bottom pane)
+fig.add_trace(
+    go.Bar(
+        x=summary_df["time"],
+        y=summary_df["Δ Volume"],
+        name="Δ Volume",
+        marker_color="orange",
+        opacity=0.6,
+        yaxis="y2",
+    )
 )
 
-# --- top: last price ---
-ax_price.plot(summary_df["time"], summary_df["last_price"],
-              color="tab:blue", marker="o", label="Last Price")
-ax_price.set_title(f"Last Price and Δ Volume — Expiry {selected_expiry}")
-ax_price.set_ylabel("Last Price")
-ax_price.legend(loc="upper left")
-ax_price.grid(True, alpha=0.3)
+# Last Price (line, top)
+fig.add_trace(
+    go.Scatter(
+        x=summary_df["time"],
+        y=summary_df["last_price"],
+        mode="lines+markers",
+        name="Last Price",
+        line=dict(color="blue"),
+        yaxis="y1",
+    )
+)
 
-# --- bottom: Δ Volume bars ---
-ax_vol.bar(summary_df["time"], summary_df["Δ Volume"],
-           color="orange", alpha=0.6, label="Δ Volume")
-ax_vol.axhline(0, color="gray", linewidth=0.8)
-ax_vol.set_ylabel("Δ Volume")
-ax_vol.legend(loc="upper left")
-ax_vol.grid(True, alpha=0.3)
-plt.setp(ax_vol.get_xticklabels(), rotation=45, ha="right")
+# --- Setup two y-axes: y1 top 70%, y2 bottom 30% ---
+fig.update_layout(
+    height=600,
+    margin=dict(l=60, r=40, t=60, b=60),
+    xaxis=dict(title="Capture Time (HH:MM)", rangeslider=dict(visible=True)),  # <-- Scroll here
+    yaxis=dict(domain=[0.35, 1.0], title="Last Price", showgrid=True),
+    yaxis2=dict(domain=[0.0, 0.3], title="Δ Volume", showgrid=True),
+    title=f"Last Price and Δ Volume — Expiry {selected_expiry}",
+    legend=dict(orientation="h"),
+    hovermode="x unified",
+)
 
-fig.tight_layout()
-st.pyplot(fig)
+st.plotly_chart(fig, use_container_width=True)
