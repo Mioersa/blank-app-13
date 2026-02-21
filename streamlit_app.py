@@ -171,7 +171,7 @@ selected = contracts[0] if len(contracts) else None
 if selected:
     sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
     if not sub.empty:
-        fig, ax = plt.subplots(figsize=(15, 7))
+        fig, ax = plt.subplots(figsize=(18, 9))
         ax.plot(sub["timestamp"], sub["lastPrice"], color="tab:orange", linewidth=1.2)
         ax.set_title(f"{selected} — Last Price vs Captured Times")
         ax.set_ylabel("Last Price")
@@ -199,7 +199,7 @@ df["vol_change"] = df["volume"].diff()
 subv = df[["timestamp", "vol_change"]].dropna().copy()
 
 if not subv.empty:
-    fig, ax = plt.subplots(figsize=(8, 3))
+    fig, ax = plt.subplots(figsize=(18, 9))
     ax.plot(subv["timestamp"], subv["vol_change"], color="tab:blue", linewidth=1.2)
     ax.set_title("Volume Change vs Captured Times")
     ax.set_ylabel("Δ Volume")
