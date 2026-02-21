@@ -84,7 +84,7 @@ df["spec_ratio"] = df["premiumTurnOver"] / df["totalTurnover"]
 df["vwap_like"] = df["value"] / df["volume"]
 df["vol_vol"] = df["volume"].rolling(5).corr(df["real_vol"])
 
-# rolling regression
+# Rolling regression
 df["ret_lag1"] = df["log_ret"].shift(1)
 betas = []
 window = 50
@@ -128,6 +128,7 @@ if not pivot.empty:
 # Spread (near/far expiry)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
+spread_df = pd.DataFrame()
 if len(contracts) >= 2:
     near, far = contracts[:2]
     spread_df = (
@@ -136,8 +137,6 @@ if len(contracts) >= 2:
         .dropna()
     )
     spread_df["spread"] = spread_df[far] - spread_df[near]
-else:
-    spread_df = pd.DataFrame()
 
 # ------------------------------------------------------------
 # Streamlit Charts
@@ -161,7 +160,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Chart: Last Price vs Time (with file markers)
+# Last Price vs Time (markers)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -174,53 +173,54 @@ if selected:
         ax.set_title(f"{selected} — Last Price vs Captured Times")
         ax.set_ylabel("Last Price")
         ax.grid(True, alpha=0.3)
-
         for t, lbl in zip(upload_times, upload_labels):
             ax.axvline(t, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
-            ax.text(t, sub["lastPrice"].min(), lbl, rotation=90, va="bottom", ha="center",
-                    fontsize=8, color="gray")
-
+            ax.text(t, sub["lastPrice"].min(), lbl, rotation=90,
+                    va="bottom", ha="center", fontsize=8, color="gray")
         ax.set_xticks([])
         st.pyplot(fig)
-    else:
-        st.info("No lastPrice data to plot.")
-else:
-    st.info("No contract found for price‑vs‑time chart.")
 
 # ------------------------------------------------------------
-# Table & Chart: Volume Change Between Files
+# Volume Change Between Files (table + plot)
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
-# build summary table
 records = []
+prev_vol_last = np.nan
+
 for i, df_part in enumerate(dfs):
     curr_first = df_part["volume"].iloc[0] if "volume" in df_part else np.nan
-    if i == 0:
-        prev_last, delta = np.nan, 0
+    if np.isnan(prev_vol_last):
+        delta = 0
     else:
-        prev_last = dfs[i - 1]["volume"].iloc[-1]
-        delta = curr_first - prev_last
+        delta = curr_first - prev_vol_last
+
     records.append({
         "capture_time": upload_times[i],
         "label": upload_labels[i],
-        "previous_volume_last": prev_last,
+        "previous_volume_last": prev_vol_last,
         "current_volume_first": curr_first,
         "delta_volume": delta
     })
 
-vol_change_table = pd.DataFrame(records)
-st.dataframe(vol_change_table[["capture_time", "label", "previous_volume_last",
-                               "current_volume_first", "delta_volume"]])
+    # update previous with current for next iteration
+    prev_vol_last = curr_first
 
-# plot change
+vol_change_table = pd.DataFrame(records)
+st.dataframe(vol_change_table[["capture_time", "label",
+                               "previous_volume_last",
+                               "current_volume_first",
+                               "delta_volume"]])
+
+# plot bar
 fig, ax = plt.subplots(figsize=(8, 3))
 ax.bar(vol_change_table["capture_time"], vol_change_table["delta_volume"],
        width=0.001, color="tab:blue", alpha=0.7)
 for t, lbl in zip(upload_times, upload_labels):
-    ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="red")
-ax.set_title("Δ Volume Between Captures")
-ax.set_ylabel("Change In Volume")
+    ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center",
+            fontsize=8, color="red")
+ax.set_title("Δ Volume Between Captures (Chained Comparison)")
+ax.set_ylabel("Change In Volume")
 ax.grid(True, alpha=0.3)
 ax.set_xticks([])
 st.pyplot(fig)
