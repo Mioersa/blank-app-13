@@ -139,18 +139,8 @@ if len(contracts) >= 2:
     spread_df["spread"] = spread_df[far] - spread_df[near]
 
 # ------------------------------------------------------------
-# Streamlit Charts
+# Streamlit Charts (Retained)
 # ------------------------------------------------------------
-st.header("Momentum & Direction")
-st.line_chart(df.set_index("timestamp")[["closePrice", "ma5", "ma20"]])
-st.line_chart(df.set_index("timestamp")[["macd", "roc5"]])
-
-st.header("Volatility & Intensity")
-st.line_chart(df.set_index("timestamp")[["real_vol", "atr", "range_pct"]])
-
-st.header("Derivative Clues")
-st.line_chart(df.set_index("timestamp")[["oi_price", "spec_ratio", "vwap_like"]])
-
 if not pivot.empty:
     st.header("Cross‑Contract Correlations")
     st.dataframe(corr_matrix.round(3))
@@ -181,7 +171,7 @@ if selected:
         st.pyplot(fig)
 
 # ------------------------------------------------------------
-# Volume Change Between Files (chart first, table below)
+# Volume Change Between Files
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
@@ -226,9 +216,3 @@ st.dataframe(vol_change_table[["capture_time", "label",
                                "current_volume_first",
                                "delta_volume"]])
 
-# ------------------------------------------------------------
-# Final
-# ------------------------------------------------------------
-st.header("Momentum Persistence & Regression")
-st.line_chart(df.set_index("timestamp")[["mom_strength", "autocorr"]])
-st.success("✅ All computations finished (Streamlit + Matplotlib only; no WebGL).")
