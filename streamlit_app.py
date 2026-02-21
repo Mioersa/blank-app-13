@@ -41,11 +41,11 @@ for uploaded in uploaded_files:
     dfs.append(df)
 
 # ------------------------------------------------------------
-# Dropdown for expiryDate (from first file)
+# Dropdown for expiryDate from first file
 # ------------------------------------------------------------
 first_df = dfs[0]
 if "expiryDate" not in first_df.columns:
-    st.error("❌ Column 'expiryDate' not found.")
+    st.error("❌ Column 'expiryDate' not found in uploaded CSVs.")
     st.stop()
 
 expiry_options = sorted(first_df["expiryDate"].unique())
@@ -68,12 +68,11 @@ if not filtered:
     st.stop()
 
 final_df = pd.concat(filtered).sort_values(["contract", "timestamp"]).reset_index(drop=True)
-
 st.subheader(f"🧾 Combined Data for expiry = {selected_expiry}")
 st.dataframe(final_df)
 
 # ------------------------------------------------------------
-# Summary: time, last price, Δ Volume (volume per interval)
+# Build summary (Δ Volume per capture)
 # ------------------------------------------------------------
 records = []
 for lbl in upload_labels:
@@ -86,44 +85,42 @@ for lbl in upload_labels:
 
 sumdf = pd.DataFrame(records)
 sumdf["Δ Volume"] = sumdf["volume"].diff()
-
-st.subheader("📊 Volume & Last Price Summary")
+st.subheader("📊 Volume & Last Price Summary")
 st.dataframe(sumdf)
 
 # ------------------------------------------------------------
-# Scrollable + zoomable chart (x & y sliders)
+# Plotly: scrollable horizontally + zoom/pan vertically
 # ------------------------------------------------------------
-st.subheader("📈 Last Price (top) & Δ Volume (bottom 30%) Chart (with Y Slider)")
+st.subheader("📈 Last Price (top) & Δ Volume (bottom 30%) Chart (Zoomable Y)")
 
 fig = go.Figure()
 
-fig.add_trace(
-    go.Bar(
-        x=sumdf["time"],
-        y=sumdf["Δ Volume"],
-        name="Δ Volume",
-        marker_color="orange",
-        opacity=0.6,
-        yaxis="y2",
-    )
-)
-fig.add_trace(
-    go.Scatter(
-        x=sumdf["time"],
-        y=sumdf["last_price"],
-        mode="lines+markers",
-        name="Last Price",
-        line=dict(color="blue"),
-        yaxis="y1",
-    )
-)
+# bottom Δ Volume bars
+fig.add_trace(go.Bar(
+    x=sumdf["time"],
+    y=sumdf["Δ Volume"],
+    name="Δ Volume",
+    marker_color="orange",
+    opacity=0.6,
+    yaxis="y2",
+))
+
+# top Last Price line
+fig.add_trace(go.Scatter(
+    x=sumdf["time"],
+    y=sumdf["last_price"],
+    mode="lines+markers",
+    name="Last Price",
+    line=dict(color="blue"),
+    yaxis="y1",
+))
 
 fig.update_layout(
     height=600,
     margin=dict(l=60, r=40, t=60, b=60),
     xaxis=dict(
         title="Capture Time (HH:MM)",
-        rangeslider=dict(visible=True),   # horizontal scroll
+        rangeslider=dict(visible=True),  # horizontal scroll
     ),
     yaxis=dict(
         domain=[0.35, 1.0],
@@ -131,8 +128,6 @@ fig.update_layout(
         tickformat=".0f",
         separatethousands=True,
         rangemode="normal",
-        range=[sumdf["last_price"].min()*0.995, sumdf["last_price"].max()*1.005],
-        rangeslider=dict(visible=True)    # <‑‑ Y‑axis slider
     ),
     yaxis2=dict(
         domain=[0.0, 0.3],
@@ -144,6 +139,7 @@ fig.update_layout(
     hovermode="x unified",
 )
 
-st.plotly_chart(fig, use_container_width=True)
+# enable free y‑zoom/pan
+st.plotly_chart(fig, use_container_width=True, config={"scrollZoom": True})
 
-st.success("✅ Ready — Both axes scrollable / zoomable.")
+st.success("✅ Scrollable & Zoomable chart ready.")
