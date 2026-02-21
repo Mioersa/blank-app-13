@@ -31,6 +31,7 @@ upload_times = []   # keep filename timestamps
 
 for uploaded in uploaded_files:
     fn = uploaded.name
+    # extract timestamp from filename ***_ddmmyyyy_hhmmss.csv
     m = re.search(r"_(\d{2})(\d{2})(\d{4})_(\d{2})(\d{2})(\d{2})\.csv$", fn)
     base_time = datetime.now()
     if m:
@@ -42,21 +43,22 @@ for uploaded in uploaded_files:
     dfs.append(df)
 
 raw_df = pd.concat(dfs).sort_values(["contract", "timestamp"]).reset_index(drop=True)
+
 st.subheader("📄 Data Preview")
 st.dataframe(raw_df.head(20))
-st.caption(f"{len(raw_df):,} rows | {raw_df['contract'].nunique()} contracts | {raw_df['expiryDate'].nunique()} expiries")
+st.caption(f"{len(raw_df):,} rows | {raw_df['contract'].nunique()} contracts | {raw_df['expiryDate'].nunique()} expiries")
 
 # ------------------------------------------------------------
-# Analytics trigger
+# Run analytics trigger
 # ------------------------------------------------------------
-if not st.button("➡️ Run analytics"):
+if not st.button("➡️ Run analytics"):
     st.stop()
 
 df = raw_df.copy()
 df["timestamp"] = pd.to_datetime(df["timestamp"])
 
 # ------------------------------------------------------------
-# Indicators
+# Core indicators
 # ------------------------------------------------------------
 df["log_ret"] = np.log(df["closePrice"] / df["closePrice"].shift(1))
 df["roc5"] = df["closePrice"].pct_change(5)
@@ -64,6 +66,7 @@ df["ma5"] = df["closePrice"].rolling(5).mean()
 df["ma20"] = df["closePrice"].rolling(20).mean()
 df["macd"] = df["closePrice"].ewm(span=12).mean() - df["closePrice"].ewm(span=26).mean()
 
+# Volatility & Intensity
 df["real_vol"] = df["log_ret"].rolling(10).std()
 df["range_pct"] = (df["highPrice"] - df["lowPrice"]) / df["closePrice"]
 df["tr"] = np.maximum.reduce([
@@ -73,6 +76,7 @@ df["tr"] = np.maximum.reduce([
 ])
 df["atr"] = df["tr"].rolling(14).mean()
 
+# Derivative clues
 df["dOI"] = df["openInterest"].diff()
 df["dP"] = df["closePrice"].diff()
 df["oi_price"] = df["dOI"] * df["dP"]
@@ -80,7 +84,7 @@ df["spec_ratio"] = df["premiumTurnOver"] / df["totalTurnover"]
 df["vwap_like"] = df["value"] / df["volume"]
 df["vol_vol"] = df["volume"].rolling(5).corr(df["real_vol"])
 
-# rolling regression robust
+# Rolling regression (robust)
 df["ret_lag1"] = df["log_ret"].shift(1)
 betas = []
 window = 50
@@ -104,7 +108,7 @@ df["mom_strength"] = betas
 df["autocorr"] = df["log_ret"].rolling(50).apply(lambda x: x.autocorr(), raw=False)
 
 # ------------------------------------------------------------
-# Cross-contract correlation & PCA
+# Correlations & PCA
 # ------------------------------------------------------------
 pivot = df.pivot(index="timestamp", columns="contract", values="log_ret").dropna()
 corr_matrix, vol_correlation, pcdf = pd.DataFrame(), pd.DataFrame(), pd.DataFrame(index=pivot.index)
@@ -120,21 +124,34 @@ if not pivot.empty:
         except Exception as e:
             st.warning(f"PCA skipped: {e}")
 
+# Spread (near/far expiry)
+contracts = sorted(df["contract"].unique())
+spread_df = pd.DataFrame()
+if len(contracts) >= 2:
+    near, far = contracts[:2]
+    sp = (
+        df[df["contract"].isin([near, far])]
+        .pivot(index="timestamp", columns="contract", values="closePrice")
+        .dropna()
+    )
+    sp["spread"] = sp[far] - sp[near]
+    spread_df = sp
+
 # ------------------------------------------------------------
-# Basic plots (no WebGL)
+# Normal Streamlit charts (no WebGL)
 # ------------------------------------------------------------
-st.header("Momentum & Direction")
+st.header("Momentum & Direction")
 st.line_chart(df.set_index("timestamp")[["closePrice", "ma5", "ma20"]])
 st.line_chart(df.set_index("timestamp")[["macd", "roc5"]])
 
-st.header("Volatility & Intensity")
+st.header("Volatility & Intensity")
 st.line_chart(df.set_index("timestamp")[["real_vol", "atr", "range_pct"]])
 
-st.header("Derivative Clues")
+st.header("Derivative Clues")
 st.line_chart(df.set_index("timestamp")[["oi_price", "spec_ratio", "vwap_like"]])
 
 if not pivot.empty:
-    st.header("Cross‑Contract Correlations")
+    st.header("Cross‑Contract Correlations")
     st.dataframe(corr_matrix.round(3))
     st.dataframe(vol_correlation.round(3))
 
@@ -142,23 +159,31 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Extra chart: Price vs Upload‑time (filename timestamp)
+# Extra Chart: Last Price vs Time (relative move)
 # ------------------------------------------------------------
-# average closing price by upload time group
-upload_summary = (
-    df.groupby("timestamp", as_index=False)["closePrice"].mean()
-)
-if len(upload_times) > 0:
-    fig, ax = plt.subplots()
-    ax.plot(upload_summary["timestamp"], upload_summary["closePrice"], color="tab:blue")
-    ax.set_xlabel("Timestamp (from filename start time)")
-    ax.set_ylabel("Average Close Price")
-    ax.set_title("Price vs Time (from filename)")
-    st.pyplot(fig)
+contracts = sorted(df["contract"].unique())
+selected = contracts[0] if len(contracts) else None
+
+if selected:
+    sub = df[df["contract"] == selected][["timestamp", "lastPrice"]].dropna().copy()
+    if not sub.empty:
+        base = sub["lastPrice"].iloc[0]
+        sub["rel_move"] = sub["lastPrice"] - base
+        fig, ax = plt.subplots(figsize=(8, 3))
+        ax.plot(sub["timestamp"], sub["rel_move"], color="tab:orange", linewidth=1)
+        ax.set_title(f"{selected} — Last Price Change vs Time")
+        ax.set_xlabel("Timestamp")
+        ax.set_ylabel("Δ Price (from start)")
+        ax.grid(True, alpha=0.3)
+        st.pyplot(fig)
+    else:
+        st.info("No lastPrice data to plot.")
+else:
+    st.info("No contract found for price‑vs‑time chart.")
 
 # ------------------------------------------------------------
-# Final stage
+# Final
 # ------------------------------------------------------------
-st.header("Momentum Persistence & Regression")
+st.header("Momentum Persistence & Regression")
 st.line_chart(df.set_index("timestamp")[["mom_strength", "autocorr"]])
-st.success("✅ All computations executed (matplotlib / Streamlit native charts; no WebGL).")
+st.success("✅ All computations finished (Streamlit + Matplotlib only; no WebGL).")
