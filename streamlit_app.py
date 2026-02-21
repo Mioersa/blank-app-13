@@ -181,7 +181,7 @@ if selected:
         st.pyplot(fig)
 
 # ------------------------------------------------------------
-# Volume Change Between Files (table + plot)
+# Volume Change Between Files (chart first, table below)
 # ------------------------------------------------------------
 st.header("Volume Change Between Files")
 
@@ -202,20 +202,14 @@ for i, df_part in enumerate(dfs):
         "current_volume_first": curr_first,
         "delta_volume": delta
     })
-
-    # update previous with current for next iteration
-    prev_vol_last = curr_first
+    prev_vol_last = curr_first  # chain update
 
 vol_change_table = pd.DataFrame(records)
-st.dataframe(vol_change_table[["capture_time", "label",
-                               "previous_volume_last",
-                               "current_volume_first",
-                               "delta_volume"]])
 
-# plot bar
+# --- Plot ---
 fig, ax = plt.subplots(figsize=(8, 3))
 ax.bar(vol_change_table["capture_time"], vol_change_table["delta_volume"],
-       width=0.001, color="tab:blue", alpha=0.7)
+       width=0.001, color="tab:blue", alpha=0.75)
 for t, lbl in zip(upload_times, upload_labels):
     ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center",
             fontsize=8, color="red")
@@ -224,6 +218,13 @@ ax.set_ylabel("Change In Volume")
 ax.grid(True, alpha=0.3)
 ax.set_xticks([])
 st.pyplot(fig)
+
+# --- Table (below chart) ---
+st.subheader("📊 Detailed Volume Change Data")
+st.dataframe(vol_change_table[["capture_time", "label",
+                               "previous_volume_last",
+                               "current_volume_first",
+                               "delta_volume"]])
 
 # ------------------------------------------------------------
 # Final
