@@ -26,9 +26,7 @@ if not uploaded_files:
 # ------------------------------------------------------------
 # Load & Preview
 # ------------------------------------------------------------
-dfs = []
-upload_times = []
-upload_labels = []
+dfs, upload_times, upload_labels = [], [], []
 
 for uploaded in uploaded_files:
     fn = uploaded.name
@@ -70,7 +68,6 @@ df["ma5"] = df["closePrice"].rolling(5).mean()
 df["ma20"] = df["closePrice"].rolling(20).mean()
 df["macd"] = df["closePrice"].ewm(span=12).mean() - df["closePrice"].ewm(span=26).mean()
 
-# Volatility & Intensity
 df["real_vol"] = df["log_ret"].rolling(10).std()
 df["range_pct"] = (df["highPrice"] - df["lowPrice"]) / df["closePrice"]
 df["tr"] = np.maximum.reduce([
@@ -80,7 +77,6 @@ df["tr"] = np.maximum.reduce([
 ])
 df["atr"] = df["tr"].rolling(14).mean()
 
-# Derivative clues
 df["dOI"] = df["openInterest"].diff()
 df["dP"] = df["closePrice"].diff()
 df["oi_price"] = df["dOI"] * df["dP"]
@@ -88,7 +84,7 @@ df["spec_ratio"] = df["premiumTurnOver"] / df["totalTurnover"]
 df["vwap_like"] = df["value"] / df["volume"]
 df["vol_vol"] = df["volume"].rolling(5).corr(df["real_vol"])
 
-# Rolling regression
+# rolling regression
 df["ret_lag1"] = df["log_ret"].shift(1)
 betas = []
 window = 50
@@ -96,8 +92,8 @@ for i in range(len(df)):
     if i < window:
         betas.append(np.nan)
         continue
-    y = df["log_ret"].iloc[i-window:i].dropna()
-    x = df["ret_lag1"].iloc[i-window:i].dropna()
+    y = df["log_ret"].iloc[i - window:i].dropna()
+    x = df["ret_lag1"].iloc[i - window:i].dropna()
     common = x.index.intersection(y.index)
     if len(common) < 5:
         betas.append(np.nan)
@@ -128,21 +124,23 @@ if not pivot.empty:
         except Exception as e:
             st.warning(f"PCA skipped: {e}")
 
+# ------------------------------------------------------------
 # Spread (near/far expiry)
+# ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
-spread_df = pd.DataFrame()
 if len(contracts) >= 2:
     near, far = contracts[:2]
-    sp = (
+    spread_df = (
         df[df["contract"].isin([near, far])]
         .pivot(index="timestamp", columns="contract", values="closePrice")
         .dropna()
     )
-    sp["spread"] = sp[far] - sp[near]
-    spread_df = sp
+    spread_df["spread"] = spread_df[far] - spread_df[near]
+else:
+    spread_df = pd.DataFrame()
 
 # ------------------------------------------------------------
-# Streamlit charts
+# Streamlit Charts
 # ------------------------------------------------------------
 st.header("Momentum & Direction")
 st.line_chart(df.set_index("timestamp")[["closePrice", "ma5", "ma20"]])
@@ -163,7 +161,7 @@ if not pcdf.empty:
     st.line_chart(pcdf)
 
 # ------------------------------------------------------------
-# Chart: Last Price vs Time (custom x‑markers per file)
+# Chart: Last Price vs Time (with file markers)
 # ------------------------------------------------------------
 contracts = sorted(df["contract"].unique())
 selected = contracts[0] if len(contracts) else None
@@ -177,12 +175,11 @@ if selected:
         ax.set_ylabel("Last Price")
         ax.grid(True, alpha=0.3)
 
-        # mark capture times from filenames
         for t, lbl in zip(upload_times, upload_labels):
             ax.axvline(t, color="gray", linestyle="--", linewidth=0.8, alpha=0.6)
-            ax.text(t, sub["lastPrice"].min(), lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="gray")
+            ax.text(t, sub["lastPrice"].min(), lbl, rotation=90, va="bottom", ha="center",
+                    fontsize=8, color="gray")
 
-        # remove default time ticks
         ax.set_xticks([])
         st.pyplot(fig)
     else:
@@ -191,28 +188,37 @@ else:
     st.info("No contract found for price‑vs‑time chart.")
 
 # ------------------------------------------------------------
-# Chart: Volume Change vs Time (custom x‑markers per file)
+# Chart: Volume Change Between Files
 # ------------------------------------------------------------
-st.header("Volume Change vs Captured Times")
+st.header("Volume Change Between Files")
 
-df["vol_change"] = df["volume"].diff()
-subv = df[["timestamp", "vol_change"]].dropna().copy()
+# compute file-to-file volume delta
+volume_deltas = []
+for i, df_part in enumerate(dfs):
+    vol_first = df_part["volume"].iloc[0] if "volume" in df_part else np.nan
+    if i == 0:
+        delta = 0
+    else:
+        prev_vol_last = dfs[i - 1]["volume"].iloc[-1]
+        delta = vol_first - prev_vol_last
+    volume_deltas.append(delta)
 
-if not subv.empty:
-    fig, ax = plt.subplots(figsize=(18, 9))
-    ax.plot(subv["timestamp"], subv["vol_change"], color="tab:blue", linewidth=1.2)
-    ax.set_title("Volume Change vs Captured Times")
-    ax.set_ylabel("Δ Volume")
-    ax.grid(True, alpha=0.3)
+vol_change_df = pd.DataFrame({
+    "capture_time": upload_times,
+    "label": upload_labels,
+    "volume_change": volume_deltas
+})
 
-    for t, lbl in zip(upload_times, upload_labels):
-        ax.axvline(t, color="red", linestyle="--", linewidth=0.8, alpha=0.6)
-        ax.text(t, subv["vol_change"].min(), lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="red")
-
-    ax.set_xticks([])
-    st.pyplot(fig)
-else:
-    st.info("No volume data to compute changes.")
+fig, ax = plt.subplots(figsize=(18, 9))
+ax.bar(vol_change_df["capture_time"], vol_change_df["volume_change"],
+       width=0.001, color="tab:blue", alpha=0.7)
+for t, lbl in zip(upload_times, upload_labels):
+    ax.text(t, 0, lbl, rotation=90, va="bottom", ha="center", fontsize=8, color="red")
+ax.set_title("Volume Change Between File Captures")
+ax.set_ylabel("Δ Volume")
+ax.grid(True, alpha=0.3)
+ax.set_xticks([])
+st.pyplot(fig)
 
 # ------------------------------------------------------------
 # Final
