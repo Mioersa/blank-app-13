@@ -100,7 +100,7 @@ st.dataframe(summary_df)
 st.subheader("📈 Last Price (top) & Δ Volume (bottom 30%) Chart")
 
 fig, (ax_price, ax_vol) = plt.subplots(
-    2, 1, figsize=(10, 5), gridspec_kw={"height_ratios": [0.7, 0.3]}, sharex=True
+    2, 1, figsize=(20, 10), gridspec_kw={"height_ratios": [0.7, 0.3]}, sharex=True
 )
 
 # --- top: last price ---
