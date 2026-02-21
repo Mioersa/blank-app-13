@@ -33,7 +33,7 @@ for uploaded in uploaded_files:
     if m:
         dd, mm, yyyy, HH, MM, SS = m.groups()
         base_time = datetime(int(yyyy), int(mm), int(dd), int(HH), int(MM), int(SS))
-        label = f"{HH}:{MM}"              # <-- keep only HH:MM
+        label = f"{HH}:{MM}"
     upload_times.append(base_time)
     upload_labels.append(label)
     df = pd.read_csv(uploaded)
@@ -41,91 +41,76 @@ for uploaded in uploaded_files:
     dfs.append(df)
 
 # ------------------------------------------------------------
-# Dropdown for expiryDate from first file
+# Dropdown for expiryDate (from first file)
 # ------------------------------------------------------------
 first_df = dfs[0]
 if "expiryDate" not in first_df.columns:
-    st.error("❌ Column 'expiryDate' not found in uploaded CSVs.")
+    st.error("❌ Column 'expiryDate' not found.")
     st.stop()
 
 expiry_options = sorted(first_df["expiryDate"].unique())
-selected_expiry = st.selectbox("Select Expiry Date (from first file)", expiry_options)
+selected_expiry = st.selectbox("Select Expiry Date", expiry_options)
 
 # ------------------------------------------------------------
 # Filter all files for selected expiryDate
 # ------------------------------------------------------------
-filtered_list = []
+filtered = []
 for i, df_file in enumerate(dfs):
-    if "expiryDate" not in df_file.columns:
-        continue
     sub = df_file[df_file["expiryDate"] == selected_expiry].copy()
     if sub.empty:
         continue
-    sub["capture_time"] = upload_times[i]
     sub["label"] = upload_labels[i]
-    filtered_list.append(sub)
+    sub["capture_time"] = upload_times[i]
+    filtered.append(sub)
 
-if not filtered_list:
-    st.warning(f"No rows found for expiryDate '{selected_expiry}' in uploaded files.")
+if not filtered:
+    st.warning("No rows found for that expiry.")
     st.stop()
 
-final_df = pd.concat(filtered_list).sort_values(["contract", "timestamp"]).reset_index(drop=True)
+final_df = pd.concat(filtered).sort_values(["contract", "timestamp"]).reset_index(drop=True)
 
-# ------------------------------------------------------------
-# Show combined data table
-# ------------------------------------------------------------
-st.subheader(f"🧾 Combined Data for expiryDate = {selected_expiry}")
+st.subheader(f"🧾 Combined Data for expiry = {selected_expiry}")
 st.dataframe(final_df)
 
 # ------------------------------------------------------------
-# Build summary table: label/time, volume, lastPrice, Δ Volume
+# Summary: time, last price, Δ Volume (volume per interval)
 # ------------------------------------------------------------
-summary_records = []
+records = []
 for lbl in upload_labels:
     sub = final_df[final_df["label"] == lbl]
     if sub.empty:
         continue
-    vol_val = sub["volume"].iloc[0] if "volume" in sub else np.nan
-    price_val = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan
-    summary_records.append({
-        "time": lbl,
-        "volume": vol_val,
-        "last_price": price_val,
-    })
+    vol = sub["volume"].iloc[0] if "volume" in sub else np.nan
+    price = sub["lastPrice"].iloc[-1] if "lastPrice" in sub else np.nan
+    records.append({"time": lbl, "volume": vol, "last_price": price})
 
-summary_df = pd.DataFrame(summary_records)
-summary_df["Δ Volume"] = summary_df["volume"].diff()
+sumdf = pd.DataFrame(records)
+sumdf["Δ Volume"] = sumdf["volume"].diff()
 
-# ------------------------------------------------------------
-# Display summary table
-# ------------------------------------------------------------
-st.subheader("📊 Volume & Last Price Summary")
-st.dataframe(summary_df)
+st.subheader("📊 Volume & Last Price Summary")
+st.dataframe(sumdf)
 
 # ------------------------------------------------------------
-# Plotly scrollable chart
+# Scrollable + zoomable chart (x & y sliders)
 # ------------------------------------------------------------
-st.subheader("📈 Scrollable Last Price (top) & Δ Volume (bottom 30%) Chart")
+st.subheader("📈 Last Price (top) & Δ Volume (bottom 30%) Chart (with Y Slider)")
 
 fig = go.Figure()
 
-# Δ Volume (bar, bottom pane)
 fig.add_trace(
     go.Bar(
-        x=summary_df["time"],
-        y=summary_df["Δ Volume"],
+        x=sumdf["time"],
+        y=sumdf["Δ Volume"],
         name="Δ Volume",
         marker_color="orange",
         opacity=0.6,
         yaxis="y2",
     )
 )
-
-# Last Price (line, top)
 fig.add_trace(
     go.Scatter(
-        x=summary_df["time"],
-        y=summary_df["last_price"],
+        x=sumdf["time"],
+        y=sumdf["last_price"],
         mode="lines+markers",
         name="Last Price",
         line=dict(color="blue"),
@@ -133,13 +118,27 @@ fig.add_trace(
     )
 )
 
-# --- Setup two y-axes: y1 top 70%, y2 bottom 30% ---
 fig.update_layout(
     height=600,
     margin=dict(l=60, r=40, t=60, b=60),
-    xaxis=dict(title="Capture Time (HH:MM)", rangeslider=dict(visible=True)),  # <-- Scroll here
-    yaxis=dict(domain=[0.35, 1.0], title="Last Price", showgrid=True),
-    yaxis2=dict(domain=[0.0, 0.3], title="Δ Volume", showgrid=True),
+    xaxis=dict(
+        title="Capture Time (HH:MM)",
+        rangeslider=dict(visible=True),   # horizontal scroll
+    ),
+    yaxis=dict(
+        domain=[0.35, 1.0],
+        title="Last Price",
+        tickformat=".0f",
+        separatethousands=True,
+        rangemode="normal",
+        range=[sumdf["last_price"].min()*0.995, sumdf["last_price"].max()*1.005],
+        rangeslider=dict(visible=True)    # <‑‑ Y‑axis slider
+    ),
+    yaxis2=dict(
+        domain=[0.0, 0.3],
+        title="Δ Volume",
+        rangemode="tozero",
+    ),
     title=f"Last Price and Δ Volume — Expiry {selected_expiry}",
     legend=dict(orientation="h"),
     hovermode="x unified",
