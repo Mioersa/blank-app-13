@@ -162,7 +162,6 @@ st.plotly_chart(fig1, use_container_width=True, config=config)
 # Chart 2 – clean (show full price numbers)
 # ------------------------------------------------------------
 st.subheader("📉 Chart 2 – Last Price (top) & Δ Volume (bottom, no OBV / no spikes)")
-
 fig2 = go.Figure()
 fig2.add_trace(go.Bar(x=sumdf["time"], y=sumdf["Δ Volume"],
                      name="Δ Volume", marker_color="orange", opacity=0.6, yaxis="y2"))
@@ -176,7 +175,7 @@ fig2.update_layout(
     yaxis=dict(
         domain=[0.45, 1.0],
         title="Last Price",
-        tickformat="none"  # 👈 disables abbreviation (shows full number)
+        tickformat="none"  # 👈 full numeric labels here
     ),
     yaxis2=dict(domain=[0.0, 0.35], title="Δ Volume", type=axis_type),
     title=f"Chart 2 – Clean Δ Volume Chart",
@@ -200,7 +199,14 @@ st.subheader("🧠 Volume Behavior Insights (Per Interval)")
 st.dataframe(sumdf[["time", "Δ Volume", "Δ Price", "RollCorr", "Signal_Label"]])
 
 # ------------------------------------------------------------
-# Chart 3 – signal line chart
+# 🪄 Combined Signal Summary (RVR + VolOsc + Signal_Label)
+# ------------------------------------------------------------
+st.subheader("🪄 Combined Signal Summary")
+combo = sumdf[["time", "RVR_Signal", "VolOsc_Signal", "Signal_Label"]].copy()
+st.dataframe(combo)
+
+# ------------------------------------------------------------
+# Chart 3 – signal line
 # ------------------------------------------------------------
 st.subheader("🩺 Chart 3 – Signal (+1/0/−1)")
 fig3 = go.Figure()
@@ -220,10 +226,9 @@ fig3.update_layout(
 st.plotly_chart(fig3, use_container_width=True, config=config)
 
 # ------------------------------------------------------------
-# Chart 4 – Clean chart with colored signal dots
+# Chart 4 – Δ Volume Bars + Signal Dots
 # ------------------------------------------------------------
 st.subheader("🎯 Chart 4 – Δ Volume Bars + Per‑Interval Signal Overlay")
-
 fig4 = go.Figure()
 fig4.add_trace(go.Bar(
     x=sumdf["time"], y=sumdf["Δ Volume"],
