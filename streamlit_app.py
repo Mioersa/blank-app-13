@@ -191,8 +191,8 @@ def classify(row):
 
 sumdf["Signal_Val"] = sumdf.apply(classify, axis=1)
 sumdf["Signal_Label"] = sumdf["Signal_Val"].map({1: "🟢 Bullish", 0: "⚪ Neutral", -1: "🔴 Bearish"})
-# ✅ new SMA of Δ Volume (5 period)
-sumdf["SMA_ΔVol"] = sumdf["Δ Volume"].rolling(5, min_periods=1).mean()
+# ✅ new SMA_ΔVol (rounded)
+sumdf["SMA_ΔVol"] = sumdf["Δ Volume"].rolling(5, min_periods=1).mean().round(2)
 
 st.subheader("🧠 Volume Behavior Insights (Per Interval)")
 st.dataframe(sumdf[["time", "Δ Volume", "SMA_ΔVol", "Δ Price", "RollCorr", "Signal_Label"]])
@@ -205,52 +205,28 @@ combo = sumdf[["time", "RVR_Signal", "VolOsc_Signal", "Signal_Label"]].copy()
 st.dataframe(combo)
 
 # ------------------------------------------------------------
-# Chart 3 – signal line
+# 🆕 Chart 4 – Last Price (top) & SMA(Δ Volume) (bottom)
 # ------------------------------------------------------------
-st.subheader("🩺 Chart 3 – Signal (+1/0/−1)")
-fig3 = go.Figure()
-fig3.add_trace(go.Scatter(
-    x=sumdf["time"], y=sumdf["Signal_Val"],
-    mode="lines+markers", line=dict(color="purple", width=3),
-    name="Signal"
-))
-fig3.update_layout(
-    height=300,
-    yaxis=dict(title="Signal", tickvals=[-1, 0, 1],
-               ticktext=["Bear (-1)", "Neutral (0)", "Bull (+1)"]),
-    xaxis=dict(title="Capture Time (HH:MM)"),
-    title="Chart 3 – Per‑Interval Signal Line",
-    hovermode="x unified"
-)
-st.plotly_chart(fig3, use_container_width=True, config=config)
-
-# ------------------------------------------------------------
-# Chart 4 – Δ Volume Bars + Signal Dots
-# ------------------------------------------------------------
-st.subheader("🎯 Chart 4 – Δ Volume Bars + Per‑Interval Signal Overlay")
+st.subheader("🆕 Chart 4 – Last Price (top) & SMA(Δ Volume) (bottom)")
 fig4 = go.Figure()
 fig4.add_trace(go.Bar(
-    x=sumdf["time"], y=sumdf["Δ Volume"],
-    name="Δ Volume", marker_color="orange", opacity=0.5, yaxis="y2"
-))
-colors = sumdf["Signal_Val"].map({1: "green", 0: "gray", -1: "red"})
-fig4.add_trace(go.Scatter(
-    x=sumdf["time"], y=sumdf["Δ Volume"],
-    mode="markers", marker=dict(color=colors, size=10, line=dict(width=1, color="black")),
-    name="Signal (Bull/Neutral/Bear)", yaxis="y2"
+    x=sumdf["time"], y=sumdf["SMA_ΔVol"],
+    name="SMA Δ Volume",
+    marker_color="teal", opacity=0.6, yaxis="y2"
 ))
 fig4.add_trace(go.Scatter(
     x=sumdf["time"], y=sumdf["last_price"],
-    mode="lines+markers", line=dict(color="blue"),
-    name="Last Price", yaxis="y1"
+    mode="lines+markers",
+    line=dict(color="blue"),
+    name="Last Price", yaxis="y1"
 ))
 fig4.update_layout(
     height=600,
     margin=dict(l=60, r=40, t=60, b=60),
     xaxis=dict(title="Capture Time (HH:MM)", rangeslider=dict(visible=True)),
-    yaxis=dict(domain=[0.45, 1.0], title="Last Price"),
-    yaxis2=dict(domain=[0.0, 0.35], title="Δ Volume", type=axis_type),
-    title="Chart 4 – Last Price & Δ Volume with Signal Dots",
+    yaxis=dict(domain=[0.45, 1.0], title="Last Price", tickformat="none"),
+    yaxis2=dict(domain=[0.0, 0.35], title="SMA Δ Volume", type=axis_type),
+    title="Chart 4 – Last Price vs SMA(Δ Volume)",
     legend=dict(orientation="h"),
     hovermode="x unified"
 )
