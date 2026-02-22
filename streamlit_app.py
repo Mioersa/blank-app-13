@@ -159,7 +159,7 @@ config = {"scrollZoom": True, "displaylogo": False}
 st.plotly_chart(fig1, use_container_width=True, config=config)
 
 # ------------------------------------------------------------
-# Chart 2 – clean (show full price numbers)
+# Chart 2 – clean (full numbers)
 # ------------------------------------------------------------
 st.subheader("📉 Chart 2 – Last Price (top) & Δ Volume (bottom, no OBV / no spikes)")
 fig2 = go.Figure()
@@ -172,11 +172,7 @@ fig2.update_layout(
     height=600,
     margin=dict(l=60, r=40, t=60, b=60),
     xaxis=dict(title="Capture Time (HH:MM)", rangeslider=dict(visible=True)),
-    yaxis=dict(
-        domain=[0.45, 1.0],
-        title="Last Price",
-        tickformat="none"  # 👈 full numeric labels here
-    ),
+    yaxis=dict(domain=[0.45, 1.0], title="Last Price", tickformat="none"),
     yaxis2=dict(domain=[0.0, 0.35], title="Δ Volume", type=axis_type),
     title=f"Chart 2 – Clean Δ Volume Chart",
     legend=dict(orientation="h"),
@@ -185,7 +181,7 @@ fig2.update_layout(
 st.plotly_chart(fig2, use_container_width=True, config=config)
 
 # ------------------------------------------------------------
-# Classification per interval
+# Classification per interval + SMA of Δ Volume
 # ------------------------------------------------------------
 def classify(row):
     slope = np.sign(row["Δ Volume"]) or 0
@@ -195,8 +191,11 @@ def classify(row):
 
 sumdf["Signal_Val"] = sumdf.apply(classify, axis=1)
 sumdf["Signal_Label"] = sumdf["Signal_Val"].map({1: "🟢 Bullish", 0: "⚪ Neutral", -1: "🔴 Bearish"})
+# ✅ new SMA of Δ Volume (5 period)
+sumdf["SMA_ΔVol"] = sumdf["Δ Volume"].rolling(5, min_periods=1).mean()
+
 st.subheader("🧠 Volume Behavior Insights (Per Interval)")
-st.dataframe(sumdf[["time", "Δ Volume", "Δ Price", "RollCorr", "Signal_Label"]])
+st.dataframe(sumdf[["time", "Δ Volume", "SMA_ΔVol", "Δ Price", "RollCorr", "Signal_Label"]])
 
 # ------------------------------------------------------------
 # 🪄 Combined Signal Summary (RVR + VolOsc + Signal_Label)
